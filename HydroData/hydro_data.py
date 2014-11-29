@@ -21,7 +21,7 @@
  ***************************************************************************/
 """
 #Need to import QObject and SIGNAL as well as defaults from plugin builder
-from PyQt4.QtCore import QSettings, QTranslator, qVersion, QCoreApplication, QObject, SIGNAL
+from PyQt4.QtCore import QSettings, QTranslator, qVersion, QCoreApplication, QObject, SIGNAL, QThread, pyqtSignal, QMutex
 #Need QMessageBox to show click info in message box
 from PyQt4.QtGui import QAction, QIcon#, QMessageBox
 # Initialize Qt resources from file resources.py
@@ -34,12 +34,139 @@ from qgis.gui import *
 from qgis.core import *
 
 import os
+import glob
+import re
 #For web services
 import urllib2
+import Queue
+import threading
 import json
 
+class PointWorker(QObject):
+    """Worker thread for delinating watersheds via EPA WATERS"""
+    def __init__(self, point):
+        QObject.__init__(self)
+        self.point = point
+        self.killed = False
+        
+    def run(self):
+        ret = None
+        #Try to connect to the EPA WATERS web server and get back a watershed feature
+        try:
+            self.status.emit("Started Point Service Call")
+            x = str(self.point.x())
+            y = str(self.point.y())
+            url = "http://ofmpub.epa.gov/waters10/PointIndexing.Service?"\
+                    +"pGeometry=POINT(%s+%s)"%(x,y)\
+                    +"&pGeometryMod=WKT%2CSRID%3D8265"\
+                    +"&pResolution=3"\
+                    +"&pPointIndexingMethod=DISTANCE"\
+                    +"&pPointIndexingMaxDist=25"\
+                    +"&pOutputPathFlag=FALSE"\
+                    +"&pReturnFlowlineGeomFlag=FALSE"\
+                    +"&optNHDPlusDataset=2.1"
+            #Call the EPA Waters point service using the qgis lat long coordinates clicked
+            #print url
+            response = json.loads(urllib2.urlopen(url).read())
+            if response['output']:
+                results = response['output']['ary_flowlines']
+                showText = x+' , '+y + '\nFound %d results:\n'%len(results)
+                showText = showText+'comid = %d\nfmeasure = %d'%(results[0]['comid'],results[0]['fmeasure'])
+                #Return the comid and fmeasure found by the point service
+                ret = (results[0]['comid'], results[0]['fmeasure'])
+                self.finished.emit(True, ret)
+            else:
+                showText = 'No features found at %s, %s'%(x,y)
+                self.finished.emit(False, ret)
+            #Send out status message
+            self.status.emit(showText)
+        except Exception, e:
+            import traceback
+            self.error.emit(e, traceback.format_exc())
+            self.status.emit("Error in Point Service Thread")
+            #print e, traceback.format_exc()
+            self.finished.emit(False, ret)
 
-class HydroData:
+    status = pyqtSignal(str)
+    error = pyqtSignal(Exception, basestring)
+    finished = pyqtSignal(bool, tuple)
+
+class NavigationWorker(QObject):
+    def __init__(self, inputs, navMutex):
+        self.comID = inputs[0]
+        self.fMeasure = inputs[1]
+        QObject.__init__(self)
+        self.mutex = navMutex
+        
+    def getNextFileName(self, path):
+        current = glob.glob(path+'/*.json')
+        numList = [0]
+        for f in current:
+            i = os.path.splitext(f)[0]
+            try:
+                n = re.findall('[0-9]+$', i)[0]
+                numList.append(int(n))
+            except IndexError:
+                pass
+        next = max(numList) + 1
+        print next
+        return 'tmp_watershed%d.json'%(next)
+        
+    def run(self):
+        ret = None
+        try:
+            self.status.emit("Started Navigation Service Call")
+            #Build navigationDelineation service URL based on inputs retrieved from point service
+            url = "http://ofmpub.epa.gov/waters10/NavigationDelineation.Service?"\
+                    +"pNavigationType=UT"\
+                    +"&pStartComid=%s"%self.comID\
+                    +"&pStartMeasure=%s"%self.fMeasure\
+                    +"&pMaxDistance=1000"\
+                    +"&pMaxTime="\
+                    +"&pAggregationFlag=true"\
+                    +"&pFeatureType=CATCHMENT"\
+                    +"&pOutputFlag=BOTH"\
+                    +"&optNHDPlusDataset=2.1"\
+                    +"&optOutGeomFormat=GEOJSON"
+            #Call the EPA Waters navigation service
+            response = json.loads(urllib2.urlopen(url).read())
+            if not response['output']['shape']:
+                self.status.emit('No shape returned from EPA WATERS')
+                self.finished.emit(False, ret)
+                return
+            
+            plugin_path = os.path.dirname(os.path.realpath(__file__))
+            tmp = os.path.join(plugin_path, 'tmp')
+            #Make sure each thread uniquely names its file.
+            self.mutex.lock()
+            file_name = os.path.join(tmp, self.getNextFileName(tmp))
+            self.mutex.unlock()
+            with open(file_name, 'w') as fp:
+                json.dump(response['output']['shape'], fp)
+            #TODO Add properties to layer from response, such as area ect...
+            layer = QgsVectorLayer(file_name, 'Delineated Watershed', 'ogr')
+            if layer.isValid():
+                ret = layer
+                self.status.emit("Complete")
+                self.finished.emit(True, ret)
+            else:
+                #self.dlg.setTextBrowser(json.dumps(response['output']['shape']))
+                #self.dlg.setTextBrowser('Layer from:\n'+url+'\n\nis invalid, could not reneder.')
+                showText = 'Layer from:\n'+url+'\n\nis invalid, could not reneder.'
+                self.status.emit(showText)
+                self.finished.emit(False, ret)
+        except Exception, e:
+            import traceback
+            self.error.emit(e, traceback.format_exc())
+            self.status.emit("Error in Navigation Service Thread")
+            print e, traceback.format_exc()
+            self.finished.emit(False, ret)
+        
+    status = pyqtSignal(str)
+    error = pyqtSignal(Exception, basestring)
+    finished = pyqtSignal(bool, object)
+            
+class HydroData(QObject):
     """QGIS Plugin Implementation."""
 
     def __init__(self, iface):
@@ -49,7 +176,8 @@ class HydroData:
             which provides the hook by which you can manipulate the QGIS
             application at run time.
         :type iface: QgsInterface
-        """
+        """        
+        QObject.__init__(self)
         # Save reference to the QGIS interface
         self.iface = iface
         
@@ -194,78 +322,59 @@ class HydroData:
                 self.tr(u'&Hydrology Data Tool'),
                 action)
             self.iface.removeToolBarIcon(action)
-
-    def epaPointService(self, point):
-        x = str(point.x())
-        y = str(point.y())
-        #Set up the point service URL
-        url = "http://ofmpub.epa.gov/waters10/PointIndexing.Service?"\
-                +"pGeometry=POINT(%s+%s)"%(x,y)\
-                +"&pGeometryMod=WKT%2CSRID%3D8265"\
-                +"&pResolution=3"\
-                +"&pPointIndexingMethod=DISTANCE"\
-                +"&pPointIndexingMaxDist=25"\
-                +"&pOutputPathFlag=FALSE"\
-                +"&pReturnFlowlineGeomFlag=FALSE"\
-                +"&optNHDPlusDataset=2.1"
-        #self.dlg.setTextBrowser(url)
-        #Call the EPA Waters point service using the qgis lat long coordinates clicked
-        response = json.loads(urllib2.urlopen(url).read())
-        if response['output']:
-            results = response['output']['ary_flowlines']
-            showText = x+' , '+y + '\nFound %d results:\n'%len(results)
-            showText = showText+'comid = %d\nfmeasure = %d'%(results[0]['comid'],results[0]['fmeasure'])
-            self.dlg.setTextBrowser(showText)
-            #Return the comid and fmeasure found by the point service
-            return (results[0]['comid'], results[0]['fmeasure'])
-        else:
-            self.dlg.setTextBrowser('No features found at %s, %s'%(x,y))
-            return None
     
-    def epaNavigationService(self, inputs):
-        comID = inputs[0]
-        fMeasure = inputs[1]
-        #Build navigationDelineation service URL based on inputs retrieved from point service
-        url = "http://ofmpub.epa.gov/waters10/NavigationDelineation.Service?"\
-                +"pNavigationType=UT"\
-                +"&pStartComid=%s"%comID\
-                +"&pStartMeasure=%s"%fMeasure\
-                +"&pMaxDistance=1000"\
-                +"&pMaxTime="\
-                +"&pAggregationFlag=true"\
-                +"&pFeatureType=CATCHMENT"\
-                +"&pOutputFlag=BOTH"\
-                +"&optNHDPlusDataset=2.1"\
-                +"&optOutGeomFormat=GEOJSON"
-        #Call the EPA Waters navigation service
-        #TODO need to do this async, and need to keep alive connection...possibly for point service as well
-        response = json.loads(urllib2.urlopen(url).read())
-        #TODO Store this in tmp space in plugin directory, get this directory dynamically
-        with open('/tmp/tmp_watershed.json', 'w') as fp:
-            #TODO MAKE SURE THIS HAS VALID DATA!?!?!?!?!?
-            json.dump(response['output']['shape'], fp)
-        #TODO Add properties to layer from response, such as area ect...
-        layer = QgsVectorLayer('/tmp/tmp_watershed.json', 'Delineated Watershed', 'ogr')
-        if layer.isValid():
-            QgsMapLayerRegistry.instance().addMapLayer(layer)
-        else:
-            #self.dlg.setTextBrowser(json.dumps(response['output']['shape']))
-            self.dlg.setTextBrowser('Layer from:\n'+url+'\n\nis invalid, could not reneder.')
+    def navWorkerFinish(self, success, layer):
+        if success:
+            QgsMapLayerRegistry.instance().addMapLayer(layer)        
+    
+    def pointWorkerFinish(self, success, inputs):
+        #Create a new thread to call the point index service
+        if success:
+            thread = QThread(self)
+            worker = self.worker = NavigationWorker(inputs, self.navMutex)
+            worker.moveToThread(thread)
+            #Connect the slots
+            thread.started.connect(worker.run)
+            #Print the periodic status messages to the text browser
+            worker.status.connect(self.dlg.setTextBrowser)
+            worker.error.connect(self.workerError)
+            #When done, call the pointWOrkerFinish to go to the next task
+            worker.finished.connect(self.navWorkerFinish)
+            #Clean up the thread
+            worker.finished.connect(worker.deleteLater)
+            thread.finished.connect(thread.deleteLater)
+            worker.finished.connect(thread.quit)
+            thread.start()
             
-           
+    def workerError(self, e, exception_string):
+        QgsMessageLog.logMessage('Worker thread raised an exception:\n'.format(exception_string), level=QgsMessageLog.CRITICAL)       
+    
     def handleMouseDown(self, point, button):
         #QMessageBox.information( self.iface.mainWindow(), "Info", "X,Y = %s,%s"%( str(point.x()), str(point.y()) ) )
         self.dlg.clearTextBrowser()
         self.dlg.setTextBrowser( str(point.x())+' , '+str(point.y()) )
-        navInput = self.epaPointService(point)
-        if navInput:
-            self.epaNavigationService(navInput)
-        else:
-            #TODO Better error reporting???
-            self.dlg.setTextBrowser('No features found, try again')
+
+        #Create a new thread to call the point index service
+        thread = QThread(self)
+        worker = self.worker = PointWorker(point)
+        worker.moveToThread(thread)
+        #Connect the slots
+        thread.started.connect(worker.run)
+        #Print the periodic status messages to the text browser
+        worker.status.connect(self.dlg.setTextBrowser)
+        worker.error.connect(self.workerError)
+        #When done, call the pointWOrkerFinish to go to the next task
+        worker.finished.connect(self.pointWorkerFinish)
+        #Clean up the thread
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        worker.finished.connect(thread.quit)
+        thread.start()
         
     def run(self):
         """Run method that performs all the real work"""
+        #TODO clean up tmp directory when finished???
+        self.navMutex = QMutex()
         #set the click tool
         self.canvas.setMapTool(self.clickTool)
         # show the dialog
@@ -276,4 +385,6 @@ class HydroData:
         if result:
             # Do something useful here - delete the line containing pass and
             # substitute with your code.
+            pass
+        else:
             pass
