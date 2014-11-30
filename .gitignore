@@ -1,0 +1,7 @@
+#ignore tmp and swap files
+*~
+*.swp
+#ignore compiled python
+*.pyc
+#ignore tmp watershed files from deliniation too
+HydroData/services/tmp/*.json
