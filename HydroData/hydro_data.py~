@@ -30,7 +30,7 @@ import resources_rc
 
 import os.path
 from tools.Deliniation import DeliniationTool
-            
+from tools.NWISsearch import NWISsearchTool            
 class HydroData():
     """QGIS Plugin Implementation.
     This is the entry point for the suite of tools for HydroQGIS
@@ -40,7 +40,7 @@ class HydroData():
     This allows each tool to have its own implementation and dialog.
     Additional utilities can be created as sub-modules, such as the services module
     that contains utilities for calling EPA WATERS services.  These services are then
-    called via threads in the tool.
+    called via threads in the DeliniationTool.
     """
 
     def __init__(self, iface):
@@ -176,6 +176,8 @@ class HydroData():
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
         #Create the objects for each tool
         self.deliniationTool = DeliniationTool(self.iface)
+        self.nwisSearchTool = NWISsearchTool(self.iface)
+        
         icon_path = ':/plugins/HydroData/icon.png'
         #Add watershed deliniation tool to the menu
         self.add_action(
@@ -188,7 +190,7 @@ class HydroData():
         self.add_action(
             icon_path, 
             text=self.tr(u'Search for NWIS Stations'), 
-            callback=self.deliniationTool.run, 
+            callback=self.nwisSearchTool.run, 
             parent=self.iface.mainWindow(),
             add_to_toolbar=False)
             

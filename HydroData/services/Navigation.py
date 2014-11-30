@@ -65,7 +65,7 @@ class NavigationWorker(QObject):
                     +"&optOutGeomFormat=GEOJSON"
             #Call the EPA Waters navigation service
             response = json.loads(urllib2.urlopen(url).read())
-            if not response['output']['shape']:
+            if not response or not response['output'] or not response['output']['shape']:
                 self.status.emit('No shape returned from EPA WATERS')
                 self.finished.emit(False, ret)
                 return

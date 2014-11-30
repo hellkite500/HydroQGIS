@@ -22,18 +22,18 @@
  ***************************************************************************/
  """
  # Import the code for the dialog
-from hydro_data_dialog import HydroDataDialog
+from deliniation_dialog import DeliniationDialog
 
 #Need to import QObject and SIGNAL as well as defaults from plugin builder
 from PyQt4.QtCore import QObject, QThread, pyqtSignal, QMutex
 #Need QMessageBox to show click info in message box
 from PyQt4.QtGui import QMessageBox
 
-from services.Point import PointWorker
-from services.Navigation import NavigationWorker
+from HydroData.services.Point import PointWorker
+from HydroData.services.Navigation import NavigationWorker
 #Import QGS libraries
 from qgis.gui import QgsMapToolEmitPoint
-from qgis.core import QgsMapLayerRegistry
+from qgis.core import QgsMapLayerRegistry, QgsMessageLog
 
 
 class DeliniationTool(QObject):
@@ -52,7 +52,7 @@ class DeliniationTool(QObject):
         #QMessageBox.information( self.iface.mainWindow(), "Info", "connect = %s"%str(result) )
         
         # Create the dialog and keep reference
-        self.dlg = HydroDataDialog()
+        self.dlg = DeliniationDialog()
     
     def navWorkerFinish(self, success, layer):
         if success:

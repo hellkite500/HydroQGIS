@@ -48,7 +48,7 @@ PY_FILES = \
 	hydro_data_dialog.py \
 	__init__.py
 
-UI_FILES = hydro_data_dialog_base.ui
+UI_FILES = tools/hydro_data_dialog_base.ui
 
 EXTRAS = icon.png metadata.txt
 

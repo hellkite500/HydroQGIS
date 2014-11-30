@@ -44,7 +44,7 @@ class NavigationWorker(QObject):
             except IndexError:
                 pass
         next = max(numList) + 1
-        print next
+        #print next
         return 'tmp_watershed%d.json'%(next)
         
     def run(self):
