@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 /***************************************************************************
- DeliniationDialog
+ NWIS Station Search Dialog
                                  A QGIS plugin
- This plugin deliniates a watershed.
+ This plugin searches for NWIS stations.
                              -------------------
-        begin                : 2014-11-24
+        begin                : 2014-11-30
         git sha              : $Format:%H$
         copyright            : (C) 2014 by Nels Frazier
         email                : hellkite500@gmail.com
