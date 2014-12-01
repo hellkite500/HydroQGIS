@@ -51,6 +51,11 @@ class NWISWorker(QObject):
                     3: list of Site Networks
                     4: list of Site Network Codes
                     5: list of Site Codes
+        Author: Jason Regina (jregina@uwyo.edu)
+        Last modified: November 29, 2014.
+        
+        Modified 2014-11-30 By Nels Frazier (hellkite500@gmail.com)
+        Adapted code to work with QGIS plugin
         """
         #NJF Setup parameters to original function
         lon = self.point.x()
@@ -175,6 +180,8 @@ class NWISWorker(QObject):
                           QgsField('SiteNCd', QVariant.String)]
             provider.addAttributes(attributes)
             
+            #Create a feature for each site to add to the layer
+            #Use the NWIS information to populate the feature's attributes
             for k in sites.keys():
                 site = sites[k]
                 x = float(site['SiteLon'])
@@ -187,10 +194,6 @@ class NWISWorker(QObject):
                 provider.addFeatures([feature])
 
             layer.commitChanges()
-            f = QgsFeature()
-            features = layer.getFeatures()
-            for f in features:
-                print "F:",f.id(), f.attributes(), f.geometry().asPoint()
             
             self.status.emit('Finished searching for sites')
             self.finished.emit(True, layer)
