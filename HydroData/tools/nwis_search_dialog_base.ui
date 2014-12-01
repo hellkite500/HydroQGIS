@@ -16,9 +16,9 @@
   <widget class="QDialogButtonBox" name="button_box">
    <property name="geometry">
     <rect>
-     <x>30</x>
+     <x>180</x>
      <y>240</y>
-     <width>341</width>
+     <width>191</width>
      <height>32</height>
     </rect>
    </property>
@@ -39,17 +39,43 @@
     </rect>
    </property>
   </widget>
-  <widget class="QSlider" name="searchDistanceSlider">
+  <widget class="QSpinBox" name="searchDistance">
    <property name="geometry">
     <rect>
-     <x>20</x>
-     <y>250</y>
-     <width>160</width>
-     <height>19</height>
+     <x>10</x>
+     <y>260</y>
+     <width>55</width>
+     <height>26</height>
     </rect>
    </property>
-   <property name="orientation">
-    <enum>Qt::Horizontal</enum>
+   <property name="value">
+    <number>10</number>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>230</y>
+     <width>111</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Search Distance</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_2">
+   <property name="geometry">
+    <rect>
+     <x>70</x>
+     <y>260</y>
+     <width>62</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Miles</string>
    </property>
   </widget>
  </widget>
