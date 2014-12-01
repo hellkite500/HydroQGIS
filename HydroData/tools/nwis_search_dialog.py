@@ -45,6 +45,9 @@ class NWISsearchDialog(QtGui.QDialog, FORM_CLASS):
         
     def clearTextBrowser(self):
         self.txtFeedback.clear()
-        
+
+    def addToTextBrowser(self, output):
+        self.txtFeedback.insertPlainText(output+'\n')
+            
     def getDistance(self):
         return self.searchDistance.value()
