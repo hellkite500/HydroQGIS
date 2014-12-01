@@ -5,7 +5,7 @@
                                  A QGIS plugin
  This plugin seraches for stations with NWIS data in a particular bounding box.
                               -------------------
-        begin                : 2014-11-24
+        begin                : 2014-11-30
         git sha              : $Format:%H$
         copyright            : (C) 2014 by Nels Frazier
         email                : hellkite500@gmail.com
