@@ -28,8 +28,8 @@ from PyQt4.QtCore import QObject, QThread
 #Need QMessageBox to show click info in message box
 from PyQt4.QtGui import QMessageBox
 
-from HydroData.services.Point import PointWorker
-from HydroData.services.Navigation import NavigationWorker
+from HydroData.services.NWIS import NWISWorker
+
 #Import QGS libraries
 from qgis.gui import QgsMapToolEmitPoint
 from qgis.core import QgsMapLayerRegistry, QgsMessageLog
@@ -53,12 +53,37 @@ class NWISsearchTool(QObject):
         # Create the dialog and keep reference
         self.dlg = NWISsearchDialog()
     
+    def workerError(self, e, exception_string):
+        QgsMessageLog.logMessage('Worker thread raised an exception:\n'.format(exception_string), level=QgsMessageLog.CRITICAL)
+        print e
+        print exception_string  
            
+    def NWISWorkerFinish(self, success, layer):
+        if success:
+            QgsMapLayerRegistry.instance().addMapLayer(layer)
+        
     
     def handleMouseDown(self, point, button):
         #QMessageBox.information( self.iface.mainWindow(), "Info", "X,Y = %s,%s"%( str(point.x()), str(point.y()) ) )
         self.dlg.clearTextBrowser()
-        self.dlg.setTextBrowser( str(point.x())+' , '+str(point.y()) )
+        self.dlg.setTextBrowser( str(point.x())+' , '+str(point.y())+'\n' )
+        distance = self.dlg.getDistance()
+        #Create a new thread to call the NWIS web service
+        thread = QThread(self)
+        worker = self.worker = NWISWorker(point, distance)
+        worker.moveToThread(thread)
+        #Connect the slots
+        thread.started.connect(worker.run)
+        #Print the periodic status messages to the text browser
+        worker.status.connect(self.dlg.addToTextBrowser)
+        worker.error.connect(self.workerError)
+        #When done, call the NWISWorkerFinish to handle results
+        worker.finished.connect(self.NWISWorkerFinish)
+        #Clean up the thread
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        worker.finished.connect(thread.quit)
+        thread.start()
         
     def run(self):
         """Run method that performs all the real work"""
