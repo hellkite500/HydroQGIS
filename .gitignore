@@ -5,3 +5,5 @@
 *.pyc
 #ignore tmp watershed files from deliniation too
 HydroData/services/tmp/*.json
+#ignore help builds
+HydroData/help/build/**/*
