@@ -30,7 +30,8 @@ import resources_rc
 
 import os.path
 from tools.Deliniation import DeliniationTool
-from tools.NWISsearch import NWISsearchTool            
+from tools.NWISsearch import NWISsearchTool
+from tools.FFA import FFATool            
 class HydroData():
     """QGIS Plugin Implementation.
     This is the entry point for the suite of tools for HydroQGIS
@@ -177,6 +178,7 @@ class HydroData():
         #Create the objects for each tool
         self.deliniationTool = DeliniationTool(self.iface)
         self.nwisSearchTool = NWISsearchTool(self.iface)
+        self.ffaTool = FFATool(self.iface)
         
         icon_path = ':/plugins/HydroData/icon.png'
         #Add watershed deliniation tool to the menu
@@ -194,7 +196,14 @@ class HydroData():
             parent=self.iface.mainWindow(),
             add_to_toolbar=False)
             
-
+        #Add FFA tool to the menu
+        self.add_action(
+            icon_path, 
+            text=self.tr(u'Flood Frequency Analysis'), 
+            callback=self.ffaTool.run, 
+            parent=self.iface.mainWindow(),
+            add_to_toolbar=False)
+            
         #Add all the actions to the popupMenu to display on the toolbar
         for action in self.actions:
             self.popupMenu.addAction(action)
