@@ -35,6 +35,7 @@ class USGSPeakWorker(QObject):
         self.killed = False
         self.plugin_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0]
         self.data_dir = os.path.join(self.plugin_path, 'tmp')
+        QgsMessageLog.logMessage(self.data_dir, 'Debug', QgsMessageLog.INFO)
     """
     Get flood peak data from usgs for the stations listed in station_file
     """
@@ -67,8 +68,8 @@ class USGSPeakWorker(QObject):
         query += '&hn2_compression=file'
         query += '&list_of_search_criteria=multiple_site_no'
         #Get peak flow file
-        urllib.urlretrieve(query, os.path.join(self.data_dir, 'peak'))
         #QgsMessageLog.logMessage(query, 'Debug', QgsMessageLog.INFO)
+        urllib.urlretrieve(query, os.path.join(self.data_dir, 'peak'))
         
     """
     Get the latitude, longitude, and drainage area for the stations listed in station_file
