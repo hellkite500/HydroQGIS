@@ -120,7 +120,6 @@ class FFATool(QObject):
     def run(self):
         """Run method that performs all the real work"""
         #TODO clean up tmp directory when finished???
-        self.navMutex = QMutex()
         #set the click tool
         self.canvas.setMapTool(self.clickTool)
         # show the dialog

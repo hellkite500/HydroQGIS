@@ -49,13 +49,24 @@ class parseFloodPeakWorker(QObject):
             
             #Join the data
             df3 = df.join(df2, how='inner')
-            df3.set_index(['dec_lat_va', 'dec_long_va'], append=True, inplace=True)
-            df3 = df3.reorder_levels(['site_no', 'dec_lat_va', 'dec_long_va', 'peak_yr'])
+            #Now one can use a groupby to seperate each site into a data frame to processes
+            #This iterator gives us the index name and a dataframe gropubed by site_no
+            #we can then call data.ix[site] to get each site's data and processes accordingly
+            """
+            groups = df.groupby(level='site_no')
+
+            for site, data in groups:
+                print site
+                print data.ix[site]
+            """
             #save this dataframe to a light binary format. This also perserves the multi-index hiearchy
-            #using this multi-index, each site's data can be accessed by using df.loc[('<site_code>', df.loc['site_code'].index[0][0], df.loc['site_code'].index[0][1])]
-            #TODO There HAS to be a better way!!!!!!!!!!!!!!          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
+           
             #TODO This might be a good place to look up and add generalized skew values to this data frame.
+            #maybe use df['skew'] = lookup(df['dec_lat_va'], df['dec_long_va'] before the groupby...in fact,
+            #the groupby may be best saved for when the actual ffa is performed...groupby then apply???
+            
             df3.to_msgpack(os.path.join(self.data_dir, 'test.msg'))
+            
             self.status.emit('Finished parsing flood peaks...')
             self.finished.emit(True)
         except Exception, e:
