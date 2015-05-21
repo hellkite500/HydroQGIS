@@ -35,7 +35,22 @@ from HydroData.services.USGSPeak import USGSPeakWorker
 from qgis.gui import QgsMapToolEmitPoint
 from qgis.core import QgsMapLayerRegistry, QgsMessageLog
 
+#import worker thread classes
 from Parse import parseFloodPeakWorker
+from FFA_Util import ffaWorker
+
+#import the pandas library
+import pandas as pd
+
+"""
+This structure is somewhat messy.  This particular tool has several steps, and different uses.
+The current structure of this code is for each step to be executed in it's own thread.
+
+This allows an insurance that certain steps complete before others, but still never hangs the UI.
+
+Also, depending on future implementation, one may wish to processes already quired data in a different way.
+This modularized design allows for the same code to be used to make this happen.
+"""
 
 class FFATool(QObject):
     """Implementation of the FFA Tool, part of the HydroData tool set."""
@@ -60,27 +75,60 @@ class FFATool(QObject):
     
     def workerError(self, e, exception_string):
         QgsMessageLog.logMessage('Worker thread raised an exception:\n{}'.format(exception_string), 'Debug', QgsMessageLog.INFO)
-        print e
-        print exception_string
+        #print e
+        #print exception_string
+    
+    #slot for recieving message when ffaWorker thread has finsihed
+    def ffaFinished(self, bool):
+        pass
+    
+    #When the parser finishes, we need to take the resulting dataframe
+    #and perform some additional processing.
+    def parserFinished(self, success):
+        if success:
+            #Create a thread to parse the data
+            thread = QThread(self)
+            worker = self.worker = ffaWorker()
+            worker.moveToThread(thread)
+            thread.started.connect(worker.run)
+            #Print the periodic status messages to the text browser
+            worker.status.connect(self.dlg.addToTextBrowser)
+            worker.error.connect(self.workerError)
+            #Connect these signals so we know when the thread finishes
+            worker.finished.connect(self.ffaFinished)
+            worker.finished.connect(worker.deleteLater)
+            thread.finished.connect(thread.deleteLater)
+            thread.finished.connect(thread.quit)
+            thread.start()
+    
     
     #Once we know the download finished, try to parse the aquired data
-    def peakDownloadFinished(self):
-        #Create a thread to parse the data, FIXME this could possibly be done by the download thread to save thread creation???
-        thread = QThread(self)
-        worker = self.worker = parseFloodPeakWorker()
-        worker.moveToThread(thread)
-        thread.started.connect(worker.run)
-        #Print the periodic status messages to the text browser
-        worker.status.connect(self.dlg.addToTextBrowser)
-        worker.error.connect(self.workerError)
-        #Connect these signals so we know when the thread finishes
-        worker.finished.connect(worker.deleteLater)
-        thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(thread.quit)
-        thread.start()
-        
+    def peakDownloadFinished(self, success):
+        if success:
+            #Create a thread to parse the data
+            thread = QThread(self)
+            worker = self.worker = parseFloodPeakWorker()
+            worker.moveToThread(thread)
+            thread.started.connect(worker.run)
+            #Print the periodic status messages to the text browser
+            worker.status.connect(self.dlg.addToTextBrowser)
+            worker.error.connect(self.workerError)
+            #Connect these signals so we know when the thread finishes
+            worker.finished.connect(self.parserFinished)
+            worker.finished.connect(worker.deleteLater)
+            thread.finished.connect(thread.deleteLater)
+            thread.finished.connect(thread.quit)
+            thread.start()
+        else:
+            pass
+    
     #Gather the input from the correct source and call the FFA service
     def downloadPeaks(self, stations):
+        #FIXME!!!!!!!!!!!!!!!!!!!!!!!!!
+        #FIXME this could be bad if two ffa's are running at a time (as the threading allows for) then
+        #we have a race condition!!! Maybe have the user name the runs and warn about overwritting?
+        #Or use a unique ID of some sort...but must do something!!!
+        
         #Create a new thread to download the usgs data
         thread = QThread(self)
         worker = self.worker = USGSPeakWorker(stations)
@@ -113,7 +161,19 @@ class FFATool(QObject):
             stations.append(f.attribute('SiteCode'))
         
         self.dlg.setTextBrowser('Downloading flood peak data...')
-        self.downloadPeaks(stations)
+        if len(stations) == 0:
+            self.dlg.setTextBrowser('No stations selected!')
+             # show the dialog
+            self.dlg.show()
+            # Run the dialog event loop
+            result = self.dlg.exec_()
+            # See if OK was pressed
+            if result:
+                self.runFFA()
+            else:
+                pass
+        else:
+            self.downloadPeaks(stations)
         
         #Now parse the data
         
