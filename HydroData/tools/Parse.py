@@ -40,9 +40,10 @@ class parseFloodPeakWorker(QObject):
             #This ignores comment lines beginning with #, uses the USGS header, and creates a multi-index, indexing first for site_no then by peak_yr
             df = pd.read_csv(self.peak_file, comment='#', header=0, sep='\t').drop([0]).set_index(['site_no', 'peak_yr'])
             #get rid of columns that aren't useful
-            
             df.drop(['agency_cd', 'gage_ht', 'gage_ht_cd', 'year_last_pk', 'ag_dt', 'ag_tm', 'ag_gage_ht', 'ag_gage_ht_cd'], axis=1, inplace=True)
             
+            #we also need to get rid of any row with a bad quality code: 1,3,9, or A
+            df = df[(df.peak_cd != '1') & (df.peak_cd != '3') & (df.peak_cd != '9') & (df.peak_cd != 'A')]
             #Now get the coordinate information for these stations and merge them into one dataframe
             df2 = pd.read_csv(self.coord_file, comment='#', header=0, sep='\t').drop([0]).set_index(['site_no'])
             df2.drop(['coord_acy_cd', 'coord_datum_cd'], axis=1, inplace=True)
@@ -64,8 +65,11 @@ class parseFloodPeakWorker(QObject):
             #TODO This might be a good place to look up and add generalized skew values to this data frame.
             #maybe use df['skew'] = lookup(df['dec_lat_va'], df['dec_long_va'] before the groupby...in fact,
             #the groupby may be best saved for when the actual ffa is performed...groupby then apply???
-            
-            df3.to_msgpack(os.path.join(self.data_dir, 'test.msg'))
+            #FIXME!!!!!!!!!!!!!!!!!!!!!!!!!
+            #FIXME this could be bad if two ffa's are running at a time (as the threading allows for) then
+            #we have a race condition!!! Maybe have the user name the runs and warn about overwritting?
+            #Or use a unique ID of some sort...but must do something!!!
+            df3.to_msgpack(os.path.join(self.data_dir, 'peak_data.msg'))
             
             self.status.emit('Finished parsing flood peaks...')
             self.finished.emit(True)
