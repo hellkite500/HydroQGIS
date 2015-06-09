@@ -346,21 +346,27 @@ class ffaWorker(QObject):
                 
                 #Get the adjusted probabilities
                 freq_adj = freq.copy()
+                #Apply P_adjust to all probabilities
                 freq_adj['P'] = freq['P']*P_adjust
+                #Set the flow values to nan TODO/FIXME I think this is backwards!!!!!!The flows for P_Adjust are correct, we need to interpolate back to original probabilities!!!
                 freq_adj['LogQ'] = pd.np.nan
-                #Combine these for interpolation
+                #Combine the original frequency curve and the adjusted for interpolation
                 Ps = pd.concat([freq, freq_adj])
                 Ps.set_index('P', inplace=True)
-                #Using pchip cubic interpolation (localized interpolation)
+                #Using pchip cubic interpolation (localized interpolation), interpolate the adjusted probabilities
                 Ps = Ps.sort().interpolate(method='pchip')
+                #Ps is now the adjusted probability frequency table
+                #
                 
-                #Now get the antilog and get flows in CFS
-                freq['Q'] = freq['LogQ'].apply(lambda x: pow(10,x))
+                
+                
 
                 #TODO/FIXME use Appendix 5 conditional probability adjustment if zero flood years found
                 
 
-                
+                qprint(Ps.to_string())
+                #Now get the antilog and get flows in CFS
+                freq['Q'] = freq['LogQ'].apply(lambda x: pow(10,x))
                 #Calculate the weighted skew
                 """
                     It would seem logical to use the weighted skew throughout the computations,
