@@ -42,6 +42,8 @@ from FFA_Util import ffaWorker
 #import the pandas library
 import pandas as pd
 
+#import matplotlib for plotting results
+import matplotlib.pylab as plt
 """
 This structure is somewhat messy.  This particular tool has several steps, and different uses.
 The current structure of this code is for each step to be executed in it's own thread.
@@ -79,8 +81,11 @@ class FFATool(QObject):
         #print exception_string
     
     #slot for recieving message when ffaWorker thread has finsihed
-    def ffaFinished(self, bool):
-        pass
+    def ffaFinished(self, success, freq_curv, name):
+        if(success):
+            #Can't plot in threads, so plot result when done!
+            freq_curv.plot(label=name)
+            plt.show()
     
     #When the parser finishes, we need to take the resulting dataframe
     #and perform some additional processing.

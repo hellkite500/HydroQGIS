@@ -40,17 +40,17 @@ class ffaWorker(QObject):
         self.plugin_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0]
         self.data_dir = os.path.join(self.plugin_path, 'data')
         self.tmp_dir = os.path.join(self.plugin_path, 'tmp')
-    
+        
     def stats(self, X):
         """
             Helper function to return several statistics from a pandas series, X
         """
         return X.mean(), X.std(), X.skew(), len(X)
     
-    def weightSkew(G, Gbar, N):
+    def weightSkew(self, G, Gbar, N):
         #Make sure we got a valid generalized skew value.
         if(Gbar != -200):
-            #TODO/FIXME Adjust for historicall data as per appendix 6, bulletin 17B
+            #All adjustments should be made before calculating weighted skew
             
             #For now we are just using plate1 generalized skews, so MSEgbar = 0.302 per Bulletin 17B
             MSEgbar = 0.302
@@ -67,12 +67,12 @@ class ffaWorker(QObject):
                 B = 0.55
             
             MSEg = pow(10, A - (B * log10(N/10)))
-            
+            qprint("MSE Station Skew: "+str(MSEg))
             #Now we can calculate the weighted skew
             Gw = (MSEgbar*G + MSEg*Gbar) / (MSEgbar + MSEg)
             
             #This will be the value of skew we use for the rest of the computations
-            qprint("Weighted skew: {}".format(G))
+            qprint("Weighted skew: {}".format(Gw))
             return Gw
         else:
             qprint("No plate1 skew found, not weighting skew.")
@@ -195,7 +195,7 @@ class ffaWorker(QObject):
             Xbar, S, G, N, N_low, data, low_outliers= self.low_outlier_test(Xbar, S, G, Xl, data)
 
             #calculate the high outlier threshold
-            Xh = log10(18500) #Xbar + kntable.ix[N]['value']*S TODO/FIXME CHANGE ME BACK SOON PLEASE!!!
+            Xh = Xbar + kntable.ix[N]['value']*S #log10(18500) was testing!!! #Xbar + kntable.ix[N]['value']*S
             #Test the data against the high threshold, and get back new stats
             Xbar, S, G, N, N_high, data, high_outliers = self.high_outlier_test(Xbar, S, G, Xh, data)
 
@@ -216,6 +216,7 @@ class ffaWorker(QObject):
                 #adjusted mean, std, skew, and Xl before performing low outlier test
                 #TODO/FIXME is this period (P) the correct value to use in this equation for Xl???
                 Xbar, S, G, P = self.historicalStats(data, high_outliers, numZero, Xbar, S, G, N)
+                #Adjust low outlier threshold based on historic information (P)
                 Xl = Xbar - kntable.ix[int(P)]['value']*S
             else:
                 #calculate the low outlier threshold
@@ -282,7 +283,8 @@ class ffaWorker(QObject):
                 #Now find the skew, appending .5 to lat/long indicating that we want a skew value
                 #between lat and lat+1, and long + long +1
                 Gbar = plate1.ix[lat+'.5'][lon+'.5']
-                
+                #Adopted Skew similar to HECFQ, TODO Trying to match their output...
+                Gbar = round(Gbar, 1)
                 qprint("Lat/Long Skew keys: {}\t{}, Generalized Skew: {}".format(lat+'.5', lon+'.5', Gbar))
                
                 #Before calculating stats we need to remove 0 flow values if they exists
@@ -293,17 +295,25 @@ class ffaWorker(QObject):
                 qprint(nonZero.to_string())
                 X = nonZero['logQ']
                 Xbar, S, G, N= self.stats(X)
+
                 #Need to remember the number of zero-flood years for historical adjustment
                 numZero = len(data) - N
                 qprint("Stats:\nMean: {}\nStd Dev: {}\nSkew: {}\nN: {}".format(Xbar, S, G, N))
 
                 #Now perform outlier tests
                 Xbar, S, G, N, N_low, N_high, X = self.outlierTest(Xbar, S, G, N, X, numZero, kntable)
-                
+
                 qprint("Outlier detection finished")
                 qprint("Stats:\nMean: {}\nStd Dev: {}\nSkew: {}\nN: {}".format(Xbar, S, G, N))
                 
-                
+                #Calculate the original frequency curve
+                #TODO/FIXME might be better to interpolate the skews rather than simply round, but may require more depenencies (i.e. Scypi)
+                freq = Xbar + ktable[round(G, 1)] * S
+                #Rename this series so it is more clear what we now have
+                freq.name = 'LogQ'
+                freq = freq.reset_index()
+                freq['Q'] = freq['LogQ'].apply(lambda x: pow(10,x))
+                qprint("Frequency Curve:\n"+freq.to_string())
                 
                 #Now decide if we need to apply conditional probabilty adjustment
                 #The equations for which vary if the historic adjustment was made
@@ -313,7 +323,7 @@ class ffaWorker(QObject):
                 #are removed, or if low outliers are detected and removed.  This utility only knows about
                 #zero-flow years and outlier removal at this point, so we simply check to see if the new N
                 #is < than the original record length...if so, we need to apply the adjustment.
-                
+                #See appendix 5 of Bulletin 17B
                 P_adjust = 1
                 if N_low > 0 or numZero > 0: #somewhere low data was removed, need to apply conditional probability adjustment
                     #L is the number of low flow records removed                    
@@ -333,60 +343,75 @@ class ffaWorker(QObject):
                             W = float((H-Z)) / (N+L)
                             P_adjust = (H-W*L)/H #eq 5-1b, P_bar for historic adjustment
                         else:
-                            P_adjust = N/len(data) #eq 5-1a
-                 
-                #Calculate the original frequency curve
-                #TODO/FIXME might be better to interpolate the skews rather than simply round, but may require more depenencies (i.e. Scypi)
-                freq = Xbar + ktable[round(G, 1)] * S
-                #Rename this series so it is more clear what we now have
-                freq.name = 'LogQ'
-                freq = freq.reset_index()
+                            #Need to cast one of these to get floating point result!
+                            P_adjust = float(N)/len(data) #eq 5-1a
+                    #Have calculated the probability adjustment, apply it
+                    #Get the original frequency curve
+                    freq_adj = freq.copy()
+                    #Apply P_adjust to all probabilities
+                    freq_adj['P'] = freq['P']*P_adjust
+                    #freq_adj is now the proper adjusted frequency curve,
+                    #however to apply the conditional probability adjustment, 
+                    #we still need to interpolate values for other probabilities
+                    freq_adj['Q'] = freq_adj['LogQ'].apply(lambda x: pow(10,x))
+                    qprint("Adjusted Frequency Curve:\n"+freq_adj.to_string())
+                    
+                    #Set the flow values for original probabilities to nan so they can be interpolated from the adjusted curve
+                    freq['LogQ'] = pd.np.nan
+                    #Combine the original probabilities from the frequency curve to the adjusted probabilities for interpolation
+                    Ps = pd.concat([freq, freq_adj])
+                    Ps.set_index('P', inplace=True)
+                    #Using pchip cubic interpolation (localized interpolation), interpolate the adjusted probabilities            
+                    Ps = Ps.sort().interpolate(method='pchip')
+                    #Ps is now the full adjusted probability frequency table
+                    qprint("Interpolated Curve:\n"+Ps.to_string())
+                    #We can now calculate synthetic statistics based on Appendix 5, Bulletin 17 B
+                    #Synthetic Skew = -2.50+3.12 * (Log(Q_.01 / Q_.10) / Log(Q_.10 / Q_.50)) (Eq 5-3)
+                    #using propoerty of logs: log(a/b) = log(a)-log(b)
+                    G_s = -2.50 + 3.12 * ( (Ps.ix[0.01]['LogQ'] - Ps.ix[0.10]['LogQ'])/ (Ps.ix[0.10]['LogQ'] - Ps.ix[0.50]['LogQ']) )
+                    qprint("Gs = "+str(G_s))
+                    #Synthetic skew = Log(Q__0.10 / Q_0.50) / (K_.01 - K_.50) (Eq 5-4)
+                    S_s = (Ps.ix[0.01]['LogQ'] - Ps.ix[0.50]['LogQ']) / (ktable[round(G_s, 1)].ix[0.01] - ktable[round(G_s, 1)].ix[0.50])
+                    qprint("Ss = "+str(S_s))
+                    #Synthetic mean = Log(Q_0.50) - K_0.50*(Ss)
+                    Xbar_s = Ps.ix[0.50]['LogQ'] - ktable[round(G_s, 1)].ix[0.50] * S_s
+                    #These are the statistics we should use to compute a final frequency curve
+                    Xbar = Xbar_s
+                    G = G_s
+                    S = S_s
                 
-                qprint(freq.to_string())
-                
-                #Get the adjusted probabilities
-                freq_adj = freq.copy()
-                #Apply P_adjust to all probabilities
-                freq_adj['P'] = freq['P']*P_adjust
-                #Set the flow values to nan TODO/FIXME I think this is backwards!!!!!!The flows for P_Adjust are correct, we need to interpolate back to original probabilities!!!
-                freq_adj['LogQ'] = pd.np.nan
-                #Combine the original frequency curve and the adjusted for interpolation
-                Ps = pd.concat([freq, freq_adj])
-                Ps.set_index('P', inplace=True)
-                #Using pchip cubic interpolation (localized interpolation), interpolate the adjusted probabilities
-                Ps = Ps.sort().interpolate(method='pchip')
-                #Ps is now the adjusted probability frequency table
-                #
-                
-                
-                
-
-                #TODO/FIXME use Appendix 5 conditional probability adjustment if zero flood years found
-                
-
-                qprint(Ps.to_string())
-                #Now get the antilog and get flows in CFS
-                freq['Q'] = freq['LogQ'].apply(lambda x: pow(10,x))
+                #By this point we should be ready to compute the final frequency curve, all adjustments have been made
+                #except for weighting the skew, do this and then compute the final frequency curve
                 #Calculate the weighted skew
                 """
                     It would seem logical to use the weighted skew throughout the computations,
                     but the flow chart and examples provided in Appendix 12, Bulliten 17B, suggest otherwise.
                     Their procedure is to use station skew until the very final frequency curve is developed.
                 """
-                #G = self.weightSkew(G, Gbar, N)
+                G = self.weightSkew(G, Gbar, N)
+                final_freq = Xbar + ktable[round(G, 1)] * S
+                #Rename this series so it is more clear what we now have
+                final_freq.name = 'LogQ'
+                final_freq = final_freq.reset_index().set_index('P')
+                #Now get the antilog and get flows in CFS
+                final_freq['Q'] = final_freq['LogQ'].apply(lambda x: pow(10,x))
+
+                qprint("Final Frequency Curve:\n"+final_freq.to_string())
                 
-                
-                
+                #final_freq['Q'].plot()
+                #Can't plot in thread, so pass result back to main/GUI thread to plot
+                self.finished.emit(True, final_freq['Q'], site)
                 
         except Exception, e:
             import traceback
             self.error.emit(e, traceback.format_exc())
             self.status.emit("Error in flood peak parser thread")
             #print e, traceback.format_exc()
-            self.finished.emit(False)
+            self.finished.emit(False, pd.Series(), "")
     
     status = pyqtSignal(str)
     error = pyqtSignal(Exception, basestring)
-    finished = pyqtSignal(bool)
+    finished = pyqtSignal(bool, pd.Series, str)
+    plot = pyqtSignal(pd.Series)
 
 #additional threaded utilities go here???
