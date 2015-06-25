@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>400</width>
-    <height>300</height>
+    <height>340</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -17,7 +17,7 @@
    <property name="geometry">
     <rect>
      <x>220</x>
-     <y>250</y>
+     <y>260</y>
      <width>171</width>
      <height>32</height>
     </rect>
@@ -73,6 +73,28 @@
    <attribute name="buttonGroup">
     <string notr="true">selectionGroup</string>
    </attribute>
+  </widget>
+  <widget class="QWidget" name="horizontalLayoutWidget_2">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>290</y>
+     <width>191</width>
+     <height>41</height>
+    </rect>
+   </property>
+   <layout class="QHBoxLayout" name="horizontalLayout_2">
+    <item>
+     <widget class="QLabel" name="label">
+      <property name="text">
+       <string>Station ID Field</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QComboBox" name="idFieldComboBox"/>
+    </item>
+   </layout>
   </widget>
  </widget>
  <resources/>
