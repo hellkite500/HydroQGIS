@@ -40,6 +40,7 @@ class ffaWorker(QObject):
         self.plugin_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0]
         self.data_dir = os.path.join(self.plugin_path, 'data')
         self.tmp_dir = os.path.join(self.plugin_path, 'tmp')
+        self.results = {}
         
     def stats(self, X):
         """
@@ -251,7 +252,7 @@ class ffaWorker(QObject):
                           
         #Finally, return the final statistics needed to create the frequency curve
         return Xbar, S, G, N, N_low, N_high, data
-        
+            
     def run(self):
     
         try:
@@ -288,6 +289,7 @@ class ffaWorker(QObject):
                 qprint("Lat/Long Skew keys: {}\t{}, Generalized Skew: {}".format(lat+'.5', lon+'.5', Gbar))
                
                 #Before calculating stats we need to remove 0 flow values if they exists
+                
                 nonZero = data[data['peak_va'] > 0]
                 #now get a log-transform of the data
                 nonZero['logQ'] = nonZero['peak_va'].apply(lambda x: log10(x))
@@ -325,6 +327,20 @@ class ffaWorker(QObject):
                 #is < than the original record length...if so, we need to apply the adjustment.
                 #See appendix 5 of Bulletin 17B
                 P_adjust = 1
+                W = 1
+                #Calculate the estimated probability, P_bar = N/n, that any annual peak will exceed the truncation level (eq 5-1a)
+                #Where N is the number of peaks above the truncation level and n is the number of years of record
+                #TODO/FIXME if we allow user input on historic data, then H isn't simply the length of the record!!!
+                #Since we are curretnly only using high outliers found in the record, H=len(data) is fine for now.
+                if(N_high > 0):
+                    H = len(data)
+                    Z = N_high
+                    W = float((H-Z)) / (N+L)
+                    P_adjust = (H-W*L)/H #eq 5-1b, P_bar for historic adjustment
+                else:
+                    #Need to cast one of these to get floating point result!
+                    P_adjust = float(N)/len(data) #eq 5-1a
+                
                 if N_low > 0 or numZero > 0: #somewhere low data was removed, need to apply conditional probability adjustment
                     #L is the number of low flow records removed                    
                     L = N_low + numZero
@@ -332,19 +348,7 @@ class ffaWorker(QObject):
                         qprint("ERROR: More than 25% of the record for site {} has been truncated, recommend not using this procedure.".format(site))
                         #TODO/FIXME decide what to do here....just go to the next? raise an exception??? for now just skip the site...
                         continue
-                    else:
-                        #Calculate the estimated probability, P_bar = N/n, that any annual peak will exceed the truncation level (eq 5-1a)
-                        #Where N is the number of peaks above the truncation level and n is the number of years of record
-                        #TODO/FIXME if we allow user input on historic data, then H isn't simply the length of the record!!!
-                        #Since we are curretnly only using high outliers found in the record, H=len(data) is fine for now.
-                        if(N_high > 0):
-                            H = len(data)
-                            Z = N_high
-                            W = float((H-Z)) / (N+L)
-                            P_adjust = (H-W*L)/H #eq 5-1b, P_bar for historic adjustment
-                        else:
-                            #Need to cast one of these to get floating point result!
-                            P_adjust = float(N)/len(data) #eq 5-1a
+                       
                     #Have calculated the probability adjustment, apply it
                     #Get the original frequency curve
                     freq_adj = freq.copy()
@@ -397,21 +401,60 @@ class ffaWorker(QObject):
                 final_freq['Q'] = final_freq['LogQ'].apply(lambda x: pow(10,x))
 
                 qprint("Final Frequency Curve:\n"+final_freq.to_string())
+                #X is the original data with outliers filtered, calculate plotting positions for these
+                #data points
+                #X['Rank'] = X.rank(method='max', ascending=False)
+                #Calculating Weibull plotting positions, only consider unique values
+                plotting_pos = X.drop_duplicates()
+                #This series contains the log of the peak values
+                plotting_pos.name='LogQ'
+                ranks = plotting_pos.rank(method='max', ascending=False)
+                #This series contains the rank of each event
+                ranks.name='Rank'
+                ranked_df = pd.concat([plotting_pos, ranks], axis=1)
+                #qprint("plotting pos:\n"+plotting_pos.to_string())
+                #qprint("Ranks:\n"+ranks.to_string())
+                #Need to adjust if historical peaks found/used.  Since W is 1 unlsess this happens, could just always 
+                #calculate...
+                if N_high > 0:
+                    ranked_df['Rank'] = W * ranked_df['Rank'] - (W-1)*(Z+0.5)
+                #Now calculate the exceedance probability and plotting position for the data
+                #TODO/FIXME if H (historic record length) isn't the same as record length, then
+                #this is WRONG since historic adjustment is m/(H+1) and standard weibull is m/(N+1)
+                ranked_df['Exceedance'] = ranked_df['Rank']/(len(data) + 1)
+                ranked_df['PP'] = ranked_df['Exceedance']*100
+                ranked_df['Q'] = ranked_df['LogQ'].apply(lambda x: pow(10,x))
+                qprint("Plotting Data:\n"+ranked_df.to_string())
                 
+                #Calculating 5% confidence intervals, need K value for skew 0, P 0.05
+                zc = ktable[0][0.05]
+                a = 1 - (pow(zc, 2) / (2*(N-1)))
+                b = pow(zc, 2)/N
+                KupC = (ktable[round(G, 1)] + pow( ( pow(ktable[round(G,1)], 2) - a*( pow(ktable[round(G,1)], 2) - b )), 0.5))/a
+                KupC.name = 'K_upper'
+                KlpC = (ktable[round(G, 1)] - pow( ( pow(ktable[round(G,1)], 2) - a*( pow(ktable[round(G,1)], 2) - b )), 0.5))/a
+                KlpC.name = 'K_lower'
+                
+                confidence = pd.concat([KupC, KlpC], axis=1)
+                qprint("Conf\n"+confidence.to_string())
+                confidence['LogQ_U'] = Xbar + confidence['K_upper']*S
+                confidence['LogQ_L'] = Xbar + confidence['K_lower']*S
+                confidence['Q_U'] = confidence['LogQ_U'].apply(lambda x: pow(10,x))
+                confidence['Q_L'] = confidence['LogQ_L'].apply(lambda x: pow(10,x))
                 #final_freq['Q'].plot()
-                #Can't plot in thread, so pass result back to main/GUI thread to plot
-                self.finished.emit(True, final_freq['Q'], site)
-                
+                self.results[site]={'curve' : final_freq['Q'], 'positions':ranked_df, 'confidence':confidence}
+            #Finished processing all sites, return results
+            self.finished.emit(True, self.results)    
         except Exception, e:
             import traceback
             self.error.emit(e, traceback.format_exc())
             self.status.emit("Error in flood peak parser thread")
             #print e, traceback.format_exc()
-            self.finished.emit(False, pd.Series(), "")
+            self.finished.emit(False, self.results)
     
     status = pyqtSignal(str)
     error = pyqtSignal(Exception, basestring)
-    finished = pyqtSignal(bool, pd.Series, str)
+    finished = pyqtSignal(bool, dict)
     plot = pyqtSignal(pd.Series)
 
 #additional threaded utilities go here???
