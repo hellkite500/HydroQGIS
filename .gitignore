@@ -7,3 +7,5 @@
 HydroData/services/tmp/*.json
 #ignore help builds
 HydroData/help/build/**/*
+#ignore other tmp data
+HydroData/tmp/*
