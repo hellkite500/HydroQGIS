@@ -81,11 +81,23 @@ class FFATool(QObject):
         #print exception_string
     
     #slot for recieving message when ffaWorker thread has finsihed
-    def ffaFinished(self, success, freq_curv, name):
+    def ffaFinished(self, success, results):
         if(success):
-            #Can't plot in threads, so plot result when done!
-            freq_curv.plot(label=name)
+            for name, data in results.iteritems():
+                plt.figure()
+                axes = data['curve'].plot(label='Final Frequency Curve', title='Flood Frequency Curve for '+name, logy=True)
+                axes.legend(['Final Frequency Curve'])
+                pp = data['positions']
+                conf = data['confidence']
+                conf.plot(y='Q_U', ax = axes, style='--', label='Upper 5% confidence')
+                conf.plot(y='Q_L', ax = axes, style='--', label='Lower 5% confidence')
+                pp.plot(x='Exceedance', y='Q', ax=axes, style='o', label='Recorded Events')
+                axes.invert_xaxis()
+                axes.set_ylabel('Discharge in CFS')
+                axes.set_xlabel('Exceedance Probability')
+                #plt.gca().plot(x=pp['Exceedance'], y=pp['Q'], style='o')
             plt.show()
+            
     
     #When the parser finishes, we need to take the resulting dataframe
     #and perform some additional processing.
@@ -151,6 +163,7 @@ class FFATool(QObject):
         worker.finished.connect(self.peakDownloadFinished)
         worker.finished.connect(thread.quit)
         thread.start()
+      
     
     #Moderate the steps in aquiring, parsing, and processing flood peak data
     def runFFA(self):
@@ -162,8 +175,16 @@ class FFATool(QObject):
         else:
             QgsMessageLog.logMessage("Using selected layer", 'Debug', QgsMessageLog.INFO)
             features = self.canvas.currentLayer().getFeatures()
+            
         for f in features:
-            stations.append(f.attribute('SiteCode'))
+            station = str(f[str(self.dlg.idFieldComboBox.currentText())])
+            if len(station) < 8:
+                #TODO/FIXME Bad hack to adjust for QGIS trying to convert station ID's to numerical types
+                #And then cutting off leading 0's.  Which happen to be important when querying USGS!!!
+                station = "0"*(8-len(station))+station
+            stations.append(station)
+            QgsMessageLog.logMessage('Adding station: {}\n'.format(station), 'Debug', QgsMessageLog.INFO)
+            
         
         self.dlg.setTextBrowser('Downloading flood peak data...')
         if len(stations) == 0:
@@ -181,13 +202,28 @@ class FFATool(QObject):
             self.downloadPeaks(stations)
         
         #Now parse the data
+    """
+    def inputChanged(self):
+        #If using selected feature(s), look up features attributes
+        if self.dlg.selectFeatures.isChecked():
+            attributes = [a.name() for a in self.canvas.currentLayer().selectedFeatures()[0].attributes()]
+            self.dlg.idFieldComboBox.addItems(attributes)
+        else:
+            #if using an entire layer, lookup layer attributes
+            attributes = [a.name() for a in self.canvas.currentLayer().pendingFields()]
+            self.dlg.idFieldComboBox.addItems(attributes)
+    """
         
     def run(self):
         """Run method that performs all the real work"""
         #TODO clean up tmp directory when finished???
         #set the click tool
         self.canvas.setMapTool(self.clickTool)
-        # show the dialog
+        # show the dialog and hook the radio button listeners
+        #Make sure dialog's comboBox is populated for selecting SiteCode field
+        #Doesn't matter if using whole layer or selected, since selected is a subset of layer ;)
+        attributes = [a.name() for a in self.canvas.currentLayer().pendingFields()]
+        self.dlg.idFieldComboBox.addItems(attributes)
         self.dlg.show()
         # Run the dialog event loop
         result = self.dlg.exec_()
