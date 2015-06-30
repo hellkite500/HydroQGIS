@@ -44,6 +44,9 @@ import pandas as pd
 
 #import matplotlib for plotting results
 import matplotlib.pylab as plt
+
+#Get OS module for path mangling
+import os
 """
 This structure is somewhat messy.  This particular tool has several steps, and different uses.
 The current structure of this code is for each step to be executed in it's own thread.
@@ -69,6 +72,8 @@ class FFATool(QObject):
         self.clickTool.canvasClicked.connect(self.handleMouseDown)
         # Create the dialog and keep reference
         self.dlg = FFADialog()
+        #Variable to store output directory path
+        self.output_path = ''
 
     def handleMouseDown(self, point, button):
         #QMessageBox.information( self.iface.mainWindow(), "Info", "X,Y = %s,%s"%( str(point.x()), str(point.y()) ) )
@@ -83,6 +88,7 @@ class FFATool(QObject):
     #slot for recieving message when ffaWorker thread has finsihed
     def ffaFinished(self, success, results):
         if(success):
+            QgsMessageLog.logMessage(str(len(results)), 'Print', QgsMessageLog.INFO)
             for name, data in results.iteritems():
                 plt.figure()
                 axes = data['curve'].plot(label='Final Frequency Curve', title='Flood Frequency Curve for '+name, logy=True)
@@ -90,14 +96,35 @@ class FFATool(QObject):
                 pp = data['positions']
                 conf = data['confidence']
                 conf.plot(y='Q_U', ax = axes, style='--', label='Upper 5% confidence')
-                conf.plot(y='Q_L', ax = axes, style='--', label='Lower 5% confidence')
+                conf.plot(y='Q_L', ax = axes, style='--', label='Lower 95% confidence')
                 pp.plot(x='Exceedance', y='Q', ax=axes, style='o', label='Recorded Events')
                 axes.invert_xaxis()
                 axes.set_ylabel('Discharge in CFS')
                 axes.set_xlabel('Exceedance Probability')
                 #plt.gca().plot(x=pp['Exceedance'], y=pp['Q'], style='o')
-            plt.show()
             
+                if self.output_path:
+                    #make a subdirectory for each station's analysis
+                    path = os.path.join(self.output_path, name+'_ffa')
+                    if not os.path.exists(path):
+                        os.makedirs(path)
+                    #Save the results
+                    plt.savefig(os.path.join(path, name+'.pdf'))
+                    index = 'Exceedance Probability'
+                    head = ['Computed Return Flow (CFS)']
+                    data['curve'].to_csv(os.path.join(path, name+'_final_freq.csv'), header=head, index_label = index)
+                    
+                    index = ['Station', 'Year']
+                    cols = ['Rank','Exceedance','PP','Q']
+                    head = ['Rank', 'Exceedance Probability', 'Weibull Plotting Position', 'Flow (CFS)']
+                    data['positions'].to_csv(os.path.join(path, name+'_plotting_positions.csv'), header=head, columns=cols, index_label = index)
+                    
+                    cols = ['Q_U', 'Q_L']
+                    index = 'Exceedance Probability'
+                    head = ['Upper 5% confidence', 'Lower 95% confidence']
+                    data['confidence'].to_csv(os.path.join(path, name+'_5_95_confidence_intervals.csv'), header=head, columns=cols, index_label = index)
+            #finally show the generated plots
+            plt.show()
     
     #When the parser finishes, we need to take the resulting dataframe
     #and perform some additional processing.
@@ -223,12 +250,18 @@ class FFATool(QObject):
         #Make sure dialog's comboBox is populated for selecting SiteCode field
         #Doesn't matter if using whole layer or selected, since selected is a subset of layer ;)
         attributes = [a.name() for a in self.canvas.currentLayer().pendingFields()]
+        self.dlg.idFieldComboBox.clear()
         self.dlg.idFieldComboBox.addItems(attributes)
         self.dlg.show()
         # Run the dialog event loop
         result = self.dlg.exec_()
         # See if OK was pressed
         if result:
+            self.output_path = self.dlg.save_edit.text()
+            if self.output_path:
+                self.dlg.setTextBrowser('Saving to '+self.output_path)
+            else:
+                self.dlg.setTextBrowser('No directory given, not saving')
             self.runFFA()
         else:
             pass
