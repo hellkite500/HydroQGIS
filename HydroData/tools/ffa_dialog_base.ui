@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>400</width>
-    <height>340</height>
+    <width>416</width>
+    <height>443</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -17,7 +17,7 @@
    <property name="geometry">
     <rect>
      <x>220</x>
-     <y>260</y>
+     <y>280</y>
      <width>171</width>
      <height>32</height>
     </rect>
@@ -77,13 +77,16 @@
   <widget class="QWidget" name="horizontalLayoutWidget_2">
    <property name="geometry">
     <rect>
-     <x>20</x>
-     <y>290</y>
+     <x>10</x>
+     <y>300</y>
      <width>191</width>
      <height>41</height>
     </rect>
    </property>
    <layout class="QHBoxLayout" name="horizontalLayout_2">
+    <item>
+     <widget class="QComboBox" name="idFieldComboBox"/>
+    </item>
     <item>
      <widget class="QLabel" name="label">
       <property name="text">
@@ -91,8 +94,39 @@
       </property>
      </widget>
     </item>
+   </layout>
+  </widget>
+  <widget class="QWidget" name="horizontalLayoutWidget">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>360</y>
+     <width>411</width>
+     <height>41</height>
+    </rect>
+   </property>
+   <layout class="QHBoxLayout" name="horizontalLayout">
     <item>
-     <widget class="QComboBox" name="idFieldComboBox"/>
+     <widget class="QLabel" name="save_label">
+      <property name="text">
+       <string> Output 
+Directory</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLineEdit" name="save_edit">
+      <property name="placeholderText">
+       <string>Output won't be saved unless set</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QPushButton" name="browse_button">
+      <property name="text">
+       <string>Browse</string>
+      </property>
+     </widget>
     </item>
    </layout>
   </widget>

@@ -39,6 +39,7 @@ class FFADialog(QtGui.QDialog, FORM_CLASS):
         # http://qt-project.org/doc/qt-4.8/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
+        self.browse_button.clicked.connect(self.saveToFile)
         
     def setTextBrowser(self, output):
         self.txtFeedback.setText(output)
@@ -48,3 +49,7 @@ class FFADialog(QtGui.QDialog, FORM_CLASS):
 
     def addToTextBrowser(self, output):
         self.txtFeedback.insertPlainText(output+'\n')
+        
+    def saveToFile(self):
+        self.save_edit.setText(QtGui.QFileDialog.getExistingDirectory(self, "Select Directory"))
+        
