@@ -68,6 +68,7 @@ class ffaWorker(QObject):
                 B = 0.55
             
             MSEg = pow(10, A - (B * log10(N/10)))
+            #MSEg = 0.073 #FOR COMPARING EX 2 (^^^^ give MSEg= 0.066, which is yields slightly different results, howevery they "interpolated" from table 1 in bulletin 17B) FIXME remove
             qprint("MSE Station Skew: "+str(MSEg))
             #Now we can calculate the weighted skew
             Gw = (MSEgbar*G + MSEg*Gbar) / (MSEgbar + MSEg)
@@ -82,7 +83,7 @@ class ffaWorker(QObject):
     def low_outlier_test(self, Xbar, S, G, Xl, data):
         """
             Helper function that finds low outliers in data where
-            data['logQ'] < Xl.  If any are found, stats are recomputed and these
+            data['LogQ'] < Xl.  If any are found, stats are recomputed and these
             new stats are returned along with the number of outliers removed and the filtered record.
             
             data is expected to be a pandas series, multi-indexed.  This series contains the site_no as 
@@ -106,7 +107,7 @@ class ffaWorker(QObject):
     def high_outlier_test(self, Xbar, S, G, Xh, data):
         """
             Helper function that finds high outliers in data where
-            data['logQ'] > Xh.  If any are found, stats are recomputed and these
+            data['LogQ'] > Xh.  If any are found, stats are recomputed and these
             new stats are returned along with the number of outliers removed and the filtered record.
             
             data is expected to be a pandas series, multi-indexed.  This series contains the site_no as 
@@ -121,7 +122,7 @@ class ffaWorker(QObject):
             qprint("High outliers (above {}) detected at site number: {}".format(pow(10, Xh), data.index.get_level_values(0)[0]))
             qprint(outliers.to_string())
             #Remove high outliers from the record and re-compute stats
-            data = data[ data <= Xh ]
+            data = data[ data <= Xh ]            
             Xbar, S, G, N= self.stats(data)
         #Now return the stats
         return Xbar, S, G, N, len(outliers), data, outliers
@@ -134,7 +135,7 @@ class ffaWorker(QObject):
             M = mean of X's
             S = standard deviation of X's
             G = skew of X's
-            N = number of X's in systematic record (not including low outliers/zero flood records)
+            N = number of X's in systematic record (not including outliers or zero flood records)
         
             Per Appendix 6, Bulliten 17B, this function calculates
             the historically adjusted mean, standard deviation, and skew.
@@ -151,10 +152,12 @@ class ffaWorker(QObject):
         #Z = number of historic peaks including high outliers that have historic information
         #W = systematic record weight
         #TODO/FIXME Seems like len(Xz is empty :S )
-        qprint(Xz.to_string())
+        qprint("High Outlier Data:\n"+Xz.to_string())
         Z = len(Xz)
         H = N + Z + L #TODO/FIXME Should this actually be the difference between the end and start year of the original data???, or maybe the length of the original record(currently implemented)???
+        #H = 82 #For testing Example 2 of Bulliten 17 B since we have no means of user input for historic record information...FIXME REMOVE THIS LINE
         W = float((H - Z)) / (N + L)
+        qprint("W: "+str(W))
         #Adjusted mean (eq 6-2b)
         M_bar = (W*N*M + Xz.sum()) / (H-W*L)
         #std dev squared (eq 6-3b)
@@ -211,7 +214,7 @@ class ffaWorker(QObject):
             Xh = Xbar + kntable.ix[N]['value']*S
             #Test the data against the high threshold, and get back new stats
             Xbar, S, G, N, N_high, data, high_outliers = self.high_outlier_test(Xbar, S, G, Xh, data)
-            
+            qprint("Stats after outlier removal:\nMean: {}\nStd Dev: {}\nSkew: {}\nN: {}".format(Xbar, S, G, N))
             if N_high > 0:
                 #Apply historic peak adjustment before continuing.  Need to calculate
                 #adjusted mean, std, skew, and Xl before performing low outlier test
@@ -222,7 +225,7 @@ class ffaWorker(QObject):
             else:
                 #calculate the low outlier threshold
                 Xl = Xbar - kntable.ix[N]['value']*S
-            
+            qprint("Stats after historical adjustment:\nMean: {}\nStd Dev: {}\nSkew: {}\nN: {}".format(Xbar, S, G, N))
             #Test the data against the low threshold, and get back new stats
             Xbar, S, G, N, N_low, data, low_outliers = self.low_outlier_test(Xbar, S, G, Xl, data)
                 
@@ -251,13 +254,16 @@ class ffaWorker(QObject):
                 Xbar, S, G, P = self.historicalStats(data, high_outliers, numZero, Xbar, S, G, N)
                           
         #Finally, return the final statistics needed to create the frequency curve
-        return Xbar, S, G, N, N_low, N_high, data
+        return Xbar, S, G, N, N_low, N_high, data, high_outliers
             
     def run(self):
     
         try:
             #Load peak data
             df = pd.read_msgpack(os.path.join(self.tmp_dir,'peak_data.msg'))
+            #FIXME TESTING, UNCOMMENT PREVIOUS LINE TO GO BACK TO NORMAL!!!
+            #df = pd.read_csv(os.path.join(self.tmp_dir, 'bulliten_17b_ex4_data.csv'), index_col=0, dtype=object, sep='\t')
+            qprint(df.to_string())
             plate1 = pd.read_msgpack(os.path.join(self.data_dir,'plate1.msg'))
             #load the statistics tables ktable, and kntable
             ktable = pd.read_msgpack(os.path.join(self.data_dir,'ktable.msg'))
@@ -283,28 +289,29 @@ class ffaWorker(QObject):
                 lon = data.iloc[0]['dec_long_va'].split('.')[0]
                 #Now find the skew, appending .5 to lat/long indicating that we want a skew value
                 #between lat and lat+1, and long + long +1
-                Gbar = plate1.ix[lat+'.5'][lon+'.5']
-                #Adopted Skew similar to HECFQ, TODO Trying to match their output...
-                Gbar = round(Gbar, 1)
+                Gbar =  plate1.ix[lat+'.5'][lon+'.5']
+                #Gbar = -0.3 #COMPARING TO EX 2 Bulletin 17 B, appearelntly they read -0.3 from Plate 1, whereas our map give -0.57
+
                 qprint("Lat/Long Skew keys: {}\t{}, Generalized Skew: {}".format(lat+'.5', lon+'.5', Gbar))
                
                 #Before calculating stats we need to remove 0 flow values if they exists
-                
+                qprint(df.to_string())
                 nonZero = data[data['peak_va'] > 0]
                 #now get a log-transform of the data
-                nonZero['logQ'] = nonZero['peak_va'].apply(lambda x: log10(x))
+                nonZero['LogQ'] = nonZero['peak_va'].apply(lambda x: log10(x))
                 #Calculate statistics
                 qprint(nonZero.to_string())
-                X = nonZero['logQ']
+                X = nonZero['LogQ']
                 Xbar, S, G, N= self.stats(X)
-
+                #Adopted Skew similar to HECFQ, TODO Trying to match their output...Too many percision errors to account for I think
+                #G = round(G,1)
                 #Need to remember the number of zero-flood years for historical adjustment
                 numZero = len(data) - N
                 qprint("Stats:\nMean: {}\nStd Dev: {}\nSkew: {}\nN: {}".format(Xbar, S, G, N))
 
                 #Now perform outlier tests
-                Xbar, S, G, N, N_low, N_high, X = self.outlierTest(Xbar, S, G, N, X, numZero, kntable)
-
+                Xbar, S, G, N, N_low, N_high, X, X_high = self.outlierTest(Xbar, S, G, N, X, numZero, kntable)
+                
                 qprint("Outlier detection finished")
                 qprint("Stats:\nMean: {}\nStd Dev: {}\nSkew: {}\nN: {}".format(Xbar, S, G, N))
                 
@@ -328,12 +335,15 @@ class ffaWorker(QObject):
                 #See appendix 5 of Bulletin 17B
                 P_adjust = 1
                 W = 1
+                #L is the number of truncated peaks
+                L = numZero + N_low
                 #Calculate the estimated probability, P_bar = N/n, that any annual peak will exceed the truncation level (eq 5-1a)
                 #Where N is the number of peaks above the truncation level and n is the number of years of record
                 #TODO/FIXME if we allow user input on historic data, then H isn't simply the length of the record!!!
                 #Since we are curretnly only using high outliers found in the record, H=len(data) is fine for now.
                 if(N_high > 0):
                     H = len(data)
+                    #H = 82 #for testing example 2 of bulletin 17B...FIXME REMOVE
                     Z = N_high
                     W = float((H-Z)) / (N+L)
                     P_adjust = (H-W*L)/H #eq 5-1b, P_bar for historic adjustment
@@ -364,6 +374,7 @@ class ffaWorker(QObject):
                     freq['LogQ'] = pd.np.nan
                     #Combine the original probabilities from the frequency curve to the adjusted probabilities for interpolation
                     Ps = pd.concat([freq, freq_adj])
+                    Ps.drop_duplicates(subset='P', take_last=True, inplace=True)
                     Ps.set_index('P', inplace=True)
                     #Using pchip cubic interpolation (localized interpolation), interpolate the adjusted probabilities            
                     Ps = Ps.sort().interpolate(method='pchip')
@@ -393,6 +404,7 @@ class ffaWorker(QObject):
                     Their procedure is to use station skew until the very final frequency curve is developed.
                 """
                 G = self.weightSkew(G, Gbar, N)
+                #G = self.weightSkew(G, Gbar, 82) #FOR COMPARING EX 2, 17B FIXME remove this
                 final_freq = Xbar + ktable[round(G, 1)] * S
                 #Rename this series so it is more clear what we now have
                 final_freq.name = 'LogQ'
@@ -404,8 +416,8 @@ class ffaWorker(QObject):
                 #X is the original data with outliers filtered, calculate plotting positions for these
                 #data points
                 #X['Rank'] = X.rank(method='max', ascending=False)
-                #Calculating Weibull plotting positions, only consider unique values
-                plotting_pos = X.drop_duplicates()
+                #Calculating Weibull plotting positions, only consider unique values FIXME HEC-FQ Seems to rank all, each duplicate getting a different rank...
+                plotting_pos = X.drop_duplicates() #FIXME This doesn't appear to be working anyways...
                 #This series contains the log of the peak values
                 plotting_pos.name='LogQ'
                 ranks = plotting_pos.rank(method='max', ascending=False)
@@ -417,11 +429,23 @@ class ffaWorker(QObject):
                 #Need to adjust if historical peaks found/used.  Since W is 1 unlsess this happens, could just always 
                 #calculate...
                 if N_high > 0:
+                    #Need to add historic peak/high outlier
+                    #First, adjust all the computed event numbers
+                    ranked_df['Rank'] = ranked_df['Rank'] + N_high
+                    #Adjust the ranks by eq 6-7, bulletin 17B
                     ranked_df['Rank'] = W * ranked_df['Rank'] - (W-1)*(Z+0.5)
+                    #Now add the historic peak/s ranked without any weight 1-len(X_high)
+                    tmp = X_high.rank(method='max', ascending=False)
+                    tmp.name = 'Rank'
+                    X_high = pd.concat([X_high, tmp], axis=1)
+                    ranked_df = pd.concat([ranked_df, X_high])
+                    
                 #Now calculate the exceedance probability and plotting position for the data
                 #TODO/FIXME if H (historic record length) isn't the same as record length, then
                 #this is WRONG since historic adjustment is m/(H+1) and standard weibull is m/(N+1)
-                ranked_df['Exceedance'] = ranked_df['Rank']/(len(data) + 1)
+                #Adding the number of high outliers helps makes this more reasonalbe!!! (H should include these) NJF June 30, 2015
+                ranked_df['Exceedance'] = ranked_df['Rank']/(len(data)+N_high + 1)
+                #ranked_df['Exceedance'] = ranked_df['Rank']/(82 + 1) #FOR TESTING EX 2...FIXME REMOVE
                 ranked_df['PP'] = ranked_df['Exceedance']*100
                 ranked_df['Q'] = ranked_df['LogQ'].apply(lambda x: pow(10,x))
                 qprint("Plotting Data:\n"+ranked_df.to_string())
@@ -441,8 +465,12 @@ class ffaWorker(QObject):
                 confidence['LogQ_L'] = Xbar + confidence['K_lower']*S
                 confidence['Q_U'] = confidence['LogQ_U'].apply(lambda x: pow(10,x))
                 confidence['Q_L'] = confidence['LogQ_L'].apply(lambda x: pow(10,x))
+                qprint("Conf\n"+confidence.to_string())
                 #final_freq['Q'].plot()
+                #Calculate Expected Probability
+                #expected_p = final_freq.loc[[.0001, .001, .01, .05, .10, .30, .5, .7, .9, .95, .99, .999, .9999]]
                 self.results[site]={'curve' : final_freq['Q'], 'positions':ranked_df, 'confidence':confidence}
+                
             #Finished processing all sites, return results
             self.finished.emit(True, self.results)    
         except Exception, e:
@@ -455,6 +483,6 @@ class ffaWorker(QObject):
     status = pyqtSignal(str)
     error = pyqtSignal(Exception, basestring)
     finished = pyqtSignal(bool, dict)
-    plot = pyqtSignal(pd.Series)
+    plot_and_save = pyqtSignal(dict)
 
 #additional threaded utilities go here???
