@@ -25,6 +25,9 @@
  # Import the code for the dialog
 from ffa_dialog import FFADialog
 
+#Import the custom probability scale for use with plotting frequency curves
+import ProbScale
+
 #Need to import QObject and SIGNAL as well as defaults from plugin builder
 from PyQt4.QtCore import QObject, QThread, QMutex
 #Need QMessageBox to show click info in message box
@@ -44,6 +47,7 @@ import pandas as pd
 
 #import matplotlib for plotting results
 import matplotlib.pylab as plt
+from matplotlib.ticker import FormatStrFormatter, FixedLocator
 
 #Get OS module for path mangling
 import os
@@ -90,19 +94,41 @@ class FFATool(QObject):
         if(success):
             QgsMessageLog.logMessage(str(len(results)), 'Print', QgsMessageLog.INFO)
             for name, data in results.iteritems():
-                plt.figure()
-                axes = data['curve'].plot(label='Final Frequency Curve', title='Flood Frequency Curve for '+name, logy=True)
-                axes.legend(['Final Frequency Curve'])
-                pp = data['positions']
+                pp = data['positions'] 
                 conf = data['confidence']
+                data['curve'].index = data['curve'].index.map(lambda x:x*100)
+                conf.index = conf.index.map(lambda x:x*100)
+                pp['percent_ex'] = pp['Exceedance']*100
+                
+                plt.figure(figsize=(10, 8))
+
+                axes = data['curve'].plot(title='Flood Frequency Curve for '+name, label='Final Frequency Curve')
+                axes.legend(['Final Frequency Curve'])
+
                 conf.plot(y='Q_U', ax = axes, style='--', label='Upper 5% confidence')
                 conf.plot(y='Q_L', ax = axes, style='--', label='Lower 95% confidence')
-                pp.plot(x='Exceedance', y='Q', ax=axes, style='o', label='Recorded Events')
-                axes.invert_xaxis()
+                pp.plot(x='percent_ex', y='Q', ax=axes, style='o', label='Recorded Events')   
+                
                 axes.set_ylabel('Discharge in CFS')
                 axes.set_xlabel('Exceedance Probability')
-                #plt.gca().plot(x=pp['Exceedance'], y=pp['Q'], style='o')
-            
+                plt.setp(plt.xticks()[1], rotation=45)
+                #Adjust the scales of the x and y axis
+                axes.set_yscale('log', basey=10, subsy=[2,3,4,5,6,7,8,9])
+                axes.set_xscale('prob_scale', upper=98, lower=.2)
+                #Adjust the yaxis labels and format
+                axes.yaxis.set_minor_locator(FixedLocator([200, 500, 1500, 2500, 3500, 4500, 5000, 6000, 7000, 8000, 9000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000]))
+                axes.yaxis.set_minor_formatter(FormatStrFormatter('%d'))
+                axes.yaxis.set_major_formatter(FormatStrFormatter('%d'))
+                
+                #Finally set the y-limit of the plot to be reasonable
+                axes.set_ylim((0, 2*pp['Q'].max()))
+                #Invert the x-axis
+                axes.invert_xaxis()
+                #Turn on major and minor grid lines
+                axes.grid(which='both', alpha=.9)
+                #to change alpha of major and minor independently, uncomment below and change 'both' above to 'major'
+                #axes.grid(which='minor', alpha=.9)
+                
                 if self.output_path:
                     #make a subdirectory for each station's analysis
                     path = os.path.join(self.output_path, name+'_ffa')
@@ -124,6 +150,7 @@ class FFATool(QObject):
                     head = ['Upper 5% confidence', 'Lower 95% confidence']
                     data['confidence'].to_csv(os.path.join(path, name+'_5_95_confidence_intervals.csv'), header=head, columns=cols, index_label = index)
             #finally show the generated plots
+            plt.tight_layout()
             plt.show()
     
     #When the parser finishes, we need to take the resulting dataframe
