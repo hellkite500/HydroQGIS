@@ -69,6 +69,7 @@ class USGSPeakWorker(QObject):
         query += '&list_of_search_criteria=multiple_site_no'
         #Get peak flow file
         #QgsMessageLog.logMessage(query, 'Debug', QgsMessageLog.INFO)
+        #TODO/FIXME Can throw error if run enough times....too many open files :S
         urllib.urlretrieve(query, os.path.join(self.data_dir, 'peak'))
         
     """
