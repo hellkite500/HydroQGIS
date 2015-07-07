@@ -46,7 +46,7 @@ from FFA_Util import ffaWorker
 import pandas as pd
 
 #import matplotlib for plotting results
-import matplotlib.pylab as plt
+import matplotlib.pyplot as plt
 from matplotlib.ticker import FormatStrFormatter, FixedLocator
 
 #Get OS module for path mangling
