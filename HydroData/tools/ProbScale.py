@@ -1,5 +1,4 @@
 import numpy as np
-from numpy import ma
 from matplotlib import scale as mscale
 from matplotlib import transforms as mtransforms
 from matplotlib.ticker import FormatStrFormatter, FixedLocator
@@ -138,7 +137,7 @@ class ProbScale(mscale.ScaleBase):
             remain synchronized with values in the other dimension.
             """
             
-            masked = ma.masked_where( (a < self.upper) & (a > self.lower) , a)
+            masked = np.ma.masked_where( (a < self.upper) & (a > self.lower) , a)
             #Get the CDF of the normal distribution located at mu and scaled by sigma
             #Multiply these by 100 to put it into a percent scale
             cdf = norm.cdf(masked, self.mu, self.sigma)*100
