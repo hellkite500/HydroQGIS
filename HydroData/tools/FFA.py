@@ -34,7 +34,7 @@ from PyQt4.QtCore import QObject, QThread, QMutex
 from PyQt4.QtGui import QMessageBox
 
 from HydroData.services.USGSPeak import USGSPeakWorker
-#Import QGS libraries
+#Import QGIS libraries
 from qgis.gui import QgsMapToolEmitPoint
 from qgis.core import QgsMapLayerRegistry, QgsMessageLog
 
@@ -70,20 +70,11 @@ class FFATool(QObject):
         self.iface = iface
         #Get reference to canvas and click functions
         self.canvas = self.iface.mapCanvas()
-        #Tool get get a QgsPoint from each click on the map
-        self.clickTool = QgsMapToolEmitPoint(self.canvas)
-        #Connect the cnavasClicked event to the handleMouseDown callback
-        self.clickTool.canvasClicked.connect(self.handleMouseDown)
         # Create the dialog and keep reference
         self.dlg = FFADialog()
         #Variable to store output directory path
         self.output_path = ''
 
-    def handleMouseDown(self, point, button):
-        #QMessageBox.information( self.iface.mainWindow(), "Info", "X,Y = %s,%s"%( str(point.x()), str(point.y()) ) )
-        self.dlg.clearTextBrowser()
-        self.dlg.setTextBrowser( str(point.x())+' , '+str(point.y())+'\n' )
-    
     def workerError(self, e, exception_string):
         QgsMessageLog.logMessage('Worker thread raised an exception:\n{}'.format(exception_string), 'Debug', QgsMessageLog.INFO)
         #print e
@@ -100,7 +91,7 @@ class FFATool(QObject):
                 conf.index = conf.index.map(lambda x:x*100)
                 pp['percent_ex'] = pp['Exceedance']*100
                 
-                plt.figure(figsize=(10, 8))
+                plt.figure(figsize=(19, 10), dpi=100)
 
                 axes = data['curve'].plot(title='Flood Frequency Curve for '+name, label='Final Frequency Curve')
                 axes.legend(['Final Frequency Curve'])
@@ -128,7 +119,7 @@ class FFATool(QObject):
                 axes.grid(which='both', alpha=.9)
                 #to change alpha of major and minor independently, uncomment below and change 'both' above to 'major'
                 #axes.grid(which='minor', alpha=.9)
-                
+                plt.tight_layout()
                 if self.output_path:
                     #make a subdirectory for each station's analysis
                     path = os.path.join(self.output_path, name+'_ffa')
@@ -150,7 +141,6 @@ class FFATool(QObject):
                     head = ['Upper 5% confidence', 'Lower 95% confidence']
                     data['confidence'].to_csv(os.path.join(path, name+'_5_95_confidence_intervals.csv'), header=head, columns=cols, index_label = index)
             #finally show the generated plots
-            plt.tight_layout()
             plt.show()
     
     #When the parser finishes, we need to take the resulting dataframe
@@ -271,8 +261,6 @@ class FFATool(QObject):
     def run(self):
         """Run method that performs all the real work"""
         #TODO clean up tmp directory when finished???
-        #set the click tool
-        self.canvas.setMapTool(self.clickTool)
         # show the dialog and hook the radio button listeners
         #Make sure dialog's comboBox is populated for selecting SiteCode field
         #Doesn't matter if using whole layer or selected, since selected is a subset of layer ;)
