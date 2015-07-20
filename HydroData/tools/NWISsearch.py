@@ -36,7 +36,7 @@ from qgis.core import QgsMapLayerRegistry, QgsMessageLog
 
 
 class NWISsearchTool(QObject):
-    """Implementation of the Deliniation Tool, part of the HydroData tool set."""
+    """Implementation of the Station Search Tool, part of the HydroData tool set."""
     
     def __init__(self, iface):
         QObject.__init__(self)
