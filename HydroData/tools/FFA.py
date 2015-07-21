@@ -35,7 +35,6 @@ from PyQt4.QtGui import QMessageBox
 
 from HydroData.services.USGSPeak import USGSPeakWorker
 #Import QGIS libraries
-from qgis.gui import QgsMapToolEmitPoint
 from qgis.core import QgsMapLayerRegistry, QgsMessageLog
 
 #import worker thread classes
@@ -187,7 +186,7 @@ class FFATool(QObject):
     def downloadPeaks(self, stations):
         #FIXME!!!!!!!!!!!!!!!!!!!!!!!!!
         #FIXME this could be bad if two ffa's are running at a time (as the threading allows for) then
-        #we have a race condition!!! Maybe have the user name the runs and warn about overwritting?
+        #we have a race condition!!! Maybe have the user name the runs and warn about overwritting? Append time stamps???
         #Or use a unique ID of some sort...but must do something!!!
         
         #Create a new thread to download the usgs data
