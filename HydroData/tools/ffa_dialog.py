@@ -40,7 +40,7 @@ class FFADialog(QtGui.QDialog, FORM_CLASS):
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
         self.browse_button.clicked.connect(self.saveToFile)
-        
+                
     def setTextBrowser(self, output):
         self.txtFeedback.setText(output)
         

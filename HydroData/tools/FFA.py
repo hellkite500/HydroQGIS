@@ -31,11 +31,11 @@ import ProbScale
 #Need to import QObject and SIGNAL as well as defaults from plugin builder
 from PyQt4.QtCore import QObject, QThread, QMutex
 #Need QMessageBox to show click info in message box
-from PyQt4.QtGui import QMessageBox
+from PyQt4.QtGui import QMessageBox, QDialogButtonBox
 
 from HydroData.services.USGSPeak import USGSPeakWorker
 #Import QGIS libraries
-from qgis.core import QgsMapLayerRegistry, QgsMessageLog
+from qgis.core import QgsMapLayerRegistry, QgsMessageLog, QgsMapLayer
 
 #import worker thread classes
 from Parse import parseFloodPeakWorker
@@ -259,11 +259,21 @@ class FFATool(QObject):
         
     def run(self):
         """Run method that performs all the real work"""
+        self.dlg.setTextBrowser("WARNING: Not all stations are suitable for general flood frequency analysis."\
+                                +" This tool will perform flood frequency analysis regardless of a station's suitability."\
+                                +" Users are encouraged to identify suitable stations from the Hydro Climatic Data Network or the USGS GagesII datasets.")
         #TODO clean up tmp directory when finished???
         # show the dialog and hook the radio button listeners
         #Make sure dialog's comboBox is populated for selecting SiteCode field
         #Doesn't matter if using whole layer or selected, since selected is a subset of layer ;)
-        attributes = [a.name() for a in self.canvas.currentLayer().pendingFields()]
+        attributes = []
+        layer = self.canvas.currentLayer()
+        if layer is None or layer.type() != QgsMapLayer.VectorLayer : 
+            self.dlg.button_box.button(QDialogButtonBox.Ok).setEnabled(False)
+            self.dlg.setTextBrowser('Not station input layer detected, please cancel and select a point layer or a set of station features.')
+        else:
+            self.dlg.button_box.button(QDialogButtonBox.Ok).setEnabled(True)
+            attributes = [a.name() for a in self.canvas.currentLayer().pendingFields()]
         self.dlg.idFieldComboBox.clear()
         self.dlg.idFieldComboBox.addItems(attributes)
         self.dlg.show()
