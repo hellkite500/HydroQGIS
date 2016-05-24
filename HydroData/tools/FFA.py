@@ -140,7 +140,8 @@ class FFATool(QObject):
                     head = ['Upper 5% confidence', 'Lower 95% confidence']
                     data['confidence'].to_csv(os.path.join(path, name+'_5_95_confidence_intervals.csv'), header=head, columns=cols, index_label = index)
             #finally show the generated plots
-            plt.show()
+            if self.dlg.showPlots.isChecked():
+                plt.show()
     
     #When the parser finishes, we need to take the resulting dataframe
     #and perform some additional processing.

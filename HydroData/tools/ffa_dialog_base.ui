@@ -130,6 +130,19 @@ Directory</string>
     </item>
    </layout>
   </widget>
+  <widget class="QCheckBox" name="showPlots">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>280</y>
+     <width>93</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Show Plots</string>
+   </property>
+  </widget>
  </widget>
  <resources/>
  <connections>
