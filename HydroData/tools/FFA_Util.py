@@ -310,8 +310,12 @@ class ffaWorker(QObject):
                 qprint("Stats:\nMean: {}\nStd Dev: {}\nSkew: {}\nN: {}".format(Xbar, S, G, N))
 
                 #Now perform outlier tests
-                Xbar, S, G, N, N_low, N_high, X, X_high = self.outlierTest(Xbar, S, G, N, X, numZero, kntable)
-                
+                try:
+                    Xbar, S, G, N, N_low, N_high, X, X_high = self.outlierTest(Xbar, S, G, N, X, numZero, kntable)
+                except KeyError, e:
+                    qprint("KeyError detected, N likely not valid.  N is valid in range 10 >= N <= 149")
+                    continue
+
                 qprint("Outlier detection finished")
                 qprint("Stats:\nMean: {}\nStd Dev: {}\nSkew: {}\nN: {}".format(Xbar, S, G, N))
                 
